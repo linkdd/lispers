@@ -1,0 +1,10 @@
+(def recur
+  (lambda (n)
+    (if (< 0 n)
+      (recur (- n 1))
+      ()
+    )
+  )
+)
+(recur 105)
+(exit 0)

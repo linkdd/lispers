@@ -1,0 +1,13 @@
+[package]
+name = "lispers-frontend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lispers-common = { path = "../common" }
+lazy_static = "1.4"
+logos = "0.12"
+peg = "0.8"
+snailquote = "0.3"
+parse_int = "0.6"
+line-col = "0.2"

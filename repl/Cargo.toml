@@ -1,0 +1,11 @@
+[package]
+name = "lispers-repl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lispers-common = { path = "../common" }
+lispers-backend = { path = "../backend" }
+
+clap = { version = "4.1", features = ["cargo", "derive"] }
+rustyline = "11.0"

@@ -1,0 +1,9 @@
+[package]
+name = "lispers-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lispers-common = { path = "../common" }
+lispers-frontend = { path = "../frontend" }
+
