@@ -217,22 +217,19 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       // println!("Op::Apply {:}", rte.borrow().format());
       let args_count = args.len();
       let mut val_args : Vec<Value<S>> = Vec::with_capacity(args_count);
-      let mut val_args_again : Vec<Value<S>> = Vec::with_capacity(args_count); // FIXME: can we remove this duplication?
 
       for arg in args {
          match self.exec_evaluation(gle.clone(), rte.clone(), &arg) {
-           Ok(arg) => {
-             val_args_again.push(arg.clone()); val_args.push(arg) }
+           Ok(arg) => { val_args.push(arg) }
            err => { return Done(err) }
          }
        }
 
        match self.exec_evaluation(gle.clone(), rte.clone(), &*op) {
          Ok(Value::Function(Function::NativeFn(irte, native_func))) => {
-          let rte = match irte { None => { rte }, Some(ref rte) => rte.clone() };
-          let _rte = RTE::extend(rte.clone(), val_args);
+          // let rte = match irte { None => { rte }, Some(ref rte) => rte.clone() };
 
-          match native_func(gle.clone(), val_args_again) {
+          match native_func(gle.clone(), val_args) {
             Ok(val) => { return Done(Ok(val)) }
             err => { return Done(err) }
           }
