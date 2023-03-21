@@ -1,9 +1,9 @@
 use lispers_common::Symbol;
 
-use super::Value;
+use crate::prelude::*;
 
 #[derive(Clone)]
 pub struct Lambda<S: Symbol> {
   pub params: Vec<S>,
-  pub body: Box<Value<S>>,
+  pub code: Box<Op<S>>,
 }
