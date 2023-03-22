@@ -100,14 +100,17 @@ pub use Promise::*;
 
 use super::data::{Value, Function};
 
-// use std::{rc::Rc}; // TBD: Should we use Rc over Box here?
+use std::{rc::Rc};
+
 #[derive(Clone)]
 pub enum Op<S: lispers_common::Symbol> {
   FetchGle(S), // read global variable
   RefRTE(usize, usize),
-  If(Box<Op<S>>, Box<Op<S>>, Box<Op<S>>),
+  If(Rc<Op<S>>, Rc<Op<S>>, Rc<Op<S>>),
   Finish(Value<S>),
   Enclose(Function<S>), // close over rte
-  Apply(Box<Op<S>>, Vec<Op<S>>),
-  PRINTLN(Vec<Op<S>>), // FIXME: can't get that to work properly
+  Apply(Rc<Op<S>>, Vec<Rc<Op<S>>>),
+  PRINTLN(Vec<Rc<Op<S>>>), // FIXME: can't get that to work properly
 }
+
+pub type RtOp<S> = Rc<Op<S>>;

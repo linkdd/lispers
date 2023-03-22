@@ -5,7 +5,7 @@ use crate::prelude::*;
 use crate::data::{Value, Sym, List, Function, Lambda};
 use crate::env::{Env, RTE};
 use super::Interpreter;
-//use super::{Runnable, make_runnable, make_delay};
+use super::{make_op_apply, make_op_if, make_op_enclose, make_op_println};
 
 use crate::utils::{assert_exactly_args, assert_at_least_args};
 
@@ -23,7 +23,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     Ok(Value::default())
   }
 // */
-  pub fn builtin_println(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<Op<S>> {
+  pub fn builtin_println(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<RtOp<S>> {
     assert_at_least_args(1, args.len())?;
 
     let mut values = Vec::with_capacity(args.len());
@@ -39,7 +39,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     // Ok(Op::Apply(Box::new(func), values))
     // Op::PRINTLN(Vec<Op<S>>), // FIXME: can't get that to work properly
 // */
-    Ok(Op::PRINTLN(values)) // FIXME: can't get that to work properly
+    Ok(make_op_println(values)) // FIXME: can't get that to work properly
   }
 
   pub fn builtin_println_ct(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<Value<S>> {
@@ -114,27 +114,22 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     &mut self,
     env: Rc<RefCell<Env<S>>>,
     args: Vec<Value<S>>,
-  ) -> Result<Op<S>> {
+  ) -> Result<RtOp<S>> {
     assert_exactly_args(3, args.len())?;
 
     let test = &args[0];
     let true_branch = &args[1];
     let false_branch = &args[2];
 
-/*
-    let test_compiled = Rc::new(self.compile_expression(env.clone(), test.clone())?);
-    let true_compiled = Rc::new(self.compile_expression(env.clone(), true_branch.clone())?);
-    let false_compiled = Rc::new(self.compile_expression(env.clone(), false_branch.clone())?);
-*/
-    let test_compiled = Box::new(self.compile_expression(env.clone(), test.clone())?);
-    let true_compiled = Box::new(self.compile_expression(env.clone(), true_branch.clone())?);
-    let false_compiled = Box::new(self.compile_expression(env.clone(), false_branch.clone())?);
+    let test_compiled = self.compile_expression(env.clone(), test.clone())?;
+    let true_compiled = self.compile_expression(env.clone(), true_branch.clone())?;
+    let false_compiled = self.compile_expression(env.clone(), false_branch.clone())?;
 
-    Ok(Op::If(test_compiled, true_compiled, false_compiled))
+    Ok(make_op_if(test_compiled, true_compiled, false_compiled))
 
   }
 
-  pub fn builtin_lambda(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<Op<S>> {
+  pub fn builtin_lambda(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<RtOp<S>> {
     assert_exactly_args(2, args.len())?;
 
     let params = &args[0];
@@ -164,17 +159,17 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     }
     let lambda = Function::Lambda(None, Lambda {
       params: param_names,
-      code: Box::new(self.compile_expression(Rc::new(RefCell::new(env)), body.clone())?),
+      code: self.compile_expression(Rc::new(RefCell::new(env)), body.clone())?,
     });
 
-    Ok(Op::Enclose(lambda))
+    Ok(make_op_enclose(lambda))
   }
 
   pub fn builtin_let_expression(
     &mut self,
     env: Rc<RefCell<Env<S>>>,
     args: Vec<Value<S>>,
-  ) -> Result<Op<S>> {
+  ) -> Result<RtOp<S>> {
     assert_exactly_args(2, args.len())?;
     let decls = &args[0];
     let body = &args[1];
@@ -210,9 +205,9 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
 
     let lambda = Function::Lambda(None, Lambda {
       params,
-      code: Box::new(code),
+      code: code,
     });
 
-    Ok(Op::Apply(Box::new(Op::Enclose(lambda)), args))
+    Ok(make_op_apply(make_op_enclose(lambda), args))
   }
 }
