@@ -157,7 +157,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       env.define(name.clone(), Value::Integer(index));
       index = index + 1;
     }
-    let lambda = Function::Lambda(None, Lambda {
+    let lambda = Function::Lambda(Lambda {
       params: param_names,
       code: self.compile_expression(Rc::new(RefCell::new(env)), body.clone())?,
     });
@@ -203,7 +203,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     }
     let code = self.compile_expression(Rc::new(RefCell::new(inner_env)), body.clone())?;
 
-    let lambda = Function::Lambda(None, Lambda {
+    let lambda = Function::Lambda(Lambda {
       params,
       code: code,
     });

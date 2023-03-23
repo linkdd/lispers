@@ -13,9 +13,12 @@ pub struct Interpreter<S: Symbol, B: Backend<S>> {
   marker: std::marker::PhantomData<S>,
 }
 
-// FIXME: last arg Vec<Value<S>> is actually unused!
 pub type RtArgs<S> = (Rc<RefCell<Env<S>>>, Rc<RefCell<RTE<S>>>, Rc<Op<S>>);
 pub type RtThunk<S> = Promise<RtArgs<S>, Result<Value<S>>>;
+
+pub fn make_delay<S: Symbol>(gle: Rc<RefCell<Env<S>>>, rte: Rc<RefCell<RTE<S>>>, func: Rc<Op<S>>) -> RtArgs<S> {
+  return (gle, rte, func)
+}
 
 pub fn make_op_global_ref<S: Symbol>(sym: S) -> RtOp<S> { return Rc::new(Op::FetchGle(sym)) }
 pub fn make_op_lexical_ref<S: Symbol>(depth: i64, index: i64) -> RtOp<S> {
@@ -27,10 +30,6 @@ pub fn make_op_enclose<S: Symbol>(func: Function<S>) -> RtOp<S> { return Rc::new
 pub fn make_op_apply<S: Symbol>(func: RtOp<S>, args: Vec<RtOp<S>>) -> RtOp<S> { return Rc::new(Op::Apply(func, args)) }
 pub fn make_op_println<S: Symbol>(args: Vec<RtOp<S>>) -> RtOp<S> { return Rc::new(Op::PRINTLN(args)) }
 
-
-pub fn make_delay<S: Symbol>(gle: Rc<RefCell<Env<S>>>, rte: Rc<RefCell<RTE<S>>>, func: Rc<Op<S>>) -> RtArgs<S> {
-  return (gle, rte, func)
-}
 
 mod builtins;
 
@@ -76,20 +75,14 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
         format!("({})", repr)
       },
       Value::Function(func) => match func {
-        Function::NativeFn(rte, native_func) => {
-          // format!("[function {:p}]", native_func)
-          let env = match rte {
-            Some(rte) => { rte.borrow().format() }
-            _ => { "None".to_string() }
-          };
-          format!("[function native {:p} {:}]", native_func, env)
+        Function::NativeFn(native_func) => {
+          format!("[function {:p}]", native_func)
         },
-        Function::Lambda(rte, lambda) => {
-          let env = match rte {
-            Some(rte) => { rte.borrow().format() }
-            _ => { "None".to_string() }
-          };
-          format!("[function {:p} code {:p} {:}]", lambda, lambda.code.as_ref(), env)
+        Function::Lambda(lambda) => {
+          format!("[function {:p} code {:p}]", lambda, lambda.code.as_ref())
+        },
+        Function::Closure(rte, arity, code) => {
+          format!("[closure arity {:}code {:p} {:}]", arity, code.as_ref(), rte.borrow().format())
         },
       },
     }
@@ -186,11 +179,15 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
   pub fn enclose(&mut self, rte: Rc<RefCell<RTE<S>>>, func: &Function<S>) -> Value<S> {
     // println!(" Enclose {:} ", rte.borrow().format());
     match func {
-      Function::Lambda(_rte, lambda) => {
-        return Value::Function(Function::Lambda(Some(rte), lambda.clone())) // FIXME deep copy
+      Function::Lambda(lambda) => {
+        return Value::Function(Function::Closure(rte, lambda.params.len(), lambda.code.clone())) // cloning Rc
       }
-      Function::NativeFn(_rte, native_func) => {
-        return Value::Function(Function::NativeFn(Some(rte), native_func.clone())) // FIXME deep copy
+      Function::NativeFn(_native_func) => {
+        return Value::Function(func.clone()) // FIXME deep copy
+      }
+      Function::Closure(_rte, arity, code) => { // FIXME: is this actually allowed?
+        println!("enclose: questionable case");
+        return Value::Function(Function::Closure(rte, *arity, code.clone())) // cloning Rc
       }
     }
   }
@@ -214,7 +211,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     }
     Op::If(test, then, otherwise) => {
       // println!("If {:} ", rte.borrow().format());
-      match self.exec_evaluation(gle.clone(), rte.clone(), test) {
+      match self.exec_evaluation(&gle, rte.clone(), test) {
         Ok(Value::Boolean(val)) => {
           if val {return Delay((gle, rte, then.clone()))}
           else {return Delay((gle, rte, otherwise.clone()))}
@@ -230,33 +227,27 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       let mut val_args : Vec<Value<S>> = Vec::with_capacity(args_count);
 
       for arg in args {
-         match self.exec_evaluation(gle.clone(), rte.clone(), &arg) {
+         match self.exec_evaluation(&gle, rte.clone(), &arg) {
            Ok(arg) => { val_args.push(arg) }
            err => { return Done(err) }
          }
        }
 
-       match self.exec_evaluation(gle.clone(), rte.clone(), &*op) {
-         Ok(Value::Function(Function::NativeFn(irte, native_func))) => {
-          // let rte = match irte { None => { rte }, Some(ref rte) => rte.clone() };
-
+       match self.exec_evaluation(&gle, rte.clone(), op) {
+         Ok(Value::Function(Function::NativeFn(native_func))) => {
           match native_func(gle.clone(), val_args) {
             Ok(val) => { return Done(Ok(val)) }
             err => { return Done(err) }
           }
         }
 
-        Ok(Value::Function(Function::Lambda(ref irte, ref lambda))) => {
-          match assert_exactly_args(lambda.params.len(), args_count) {
+        Ok(Value::Function(Function::Closure(ref irte, arity, ref code))) => {
+          match assert_exactly_args(arity, args_count) {
             Err(err) => { return Done(Err(err)) }
             _ => {}
           }
-          let rte = match irte {
-            None => {return Done(Err(RuntimeError::NYIE{detail: "should not happen 69".to_string()}))},
-            Some(ref rte) => rte.clone()
-          };
-          let rte = RTE::extend(rte.clone(), val_args);
-          Delay((gle, rte, lambda.code.clone()))
+          let rte = RTE::extend(irte.clone(), val_args);
+          Delay((gle, rte, code.clone()))
         }
         Ok(value) => {
           let func : Result<Function<S>> = value.try_into();
@@ -278,7 +269,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       let mut val_args : Vec<Value<S>> = Vec::with_capacity(args_count);
 
       for arg in args {
-         match self.exec_evaluation(gle.clone(), rte.clone(), &arg) {
+         match self.exec_evaluation(&gle, rte.clone(), &arg) {
            Ok(arg) => { val_args.push(arg) }
            err => { return Done(err) }
          }
@@ -299,12 +290,12 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
 
   pub fn exec_evaluation(
     &mut self,
-    global_env: Rc<RefCell<Env<S>>>,
+    global_env: &Rc<RefCell<Env<S>>>,
     env: Rc<RefCell<RTE<S>>>,
     todo: &Rc<Op<S>>
   ) -> Result<Value<S>> {
     let ret23 = |rt| self.ret42(rt);
-    return force_promise(ret23, make_delay(global_env, env, todo.clone()))
+    return force_promise(ret23, make_delay(global_env.clone(), env, todo.clone()))
   }
 
   pub fn eval_expression(
@@ -315,7 +306,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     let todo = self.compile_expression(env.clone(), expression)?;
 // println!("running now");
     let rte = RTE::new();
-    self.exec_evaluation(env, rte, &todo)
+    self.exec_evaluation(&env, rte, &todo)
   }
 
   fn parse_sexpression(&self, sexpression: &SExpression<S>) -> Result<Value<S>> {

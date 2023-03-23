@@ -10,11 +10,12 @@ pub type NativeFn<S> = fn(Rc<RefCell<Env<S>>>, Vec<Value<S>>) -> Result<Value<S>
 #[derive(Clone)]
 pub struct Closure<S: Symbol> {
   pub rte: Rc<RefCell<RTE<S>>>,
-  pub func: Function<S>,
+  pub func: Lambda<S>,
 }
 
 #[derive(Clone)]
 pub enum Function<S: Symbol> {
-  NativeFn(Option<Rc<RefCell<RTE<S>>>>, NativeFn<S>),
-  Lambda(Option<Rc<RefCell<RTE<S>>>>, Lambda<S>),
+  NativeFn(NativeFn<S>),
+  Lambda(Lambda<S>),
+  Closure(Rc<RefCell<RTE<S>>>, usize, RtOp<S>),
 }
