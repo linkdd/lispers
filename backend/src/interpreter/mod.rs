@@ -104,7 +104,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
   ) -> Result<Value<S>> {
     let sexpressions = lispers_frontend::parse(
       None,
-      &input,
+      input,
       &mut self.interner,
     )?;
 
@@ -126,7 +126,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     match expression {
       Value::Symbol(sym) => {
         let sym = sym.as_symbol();
-        let (depth, index) = env.borrow().lookup(sym.clone());
+        let (depth, index) = env.borrow().lookup(sym);
         if depth==-1 {
           if index == -1 {
             Err(RuntimeError::UndefinedSymbol {
@@ -148,13 +148,13 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
           let func_name = self.interner.resolve(sym).unwrap_or("<>");
 
           match func_name {
-            "println" => return self.builtin_println(env.clone(), args),
+            "println" => return self.builtin_println(env, args),
             "quote" => return Ok(make_op_finish(self.builtin_quote(args)?)),
-            "def" => return Ok(make_op_finish(self.builtin_define(env.clone(), args)?)),
-            "set!" => return Ok(make_op_finish(self.builtin_set(env.clone(), args)?)),
+            "def" => return Ok(make_op_finish(self.builtin_define(env, args)?)),
+            "set!" => return Ok(make_op_finish(self.builtin_set(env, args)?)),
             "if" => return self.builtin_controlflow_if(env, args),
             "lambda" => return self.builtin_lambda(env, args),
-            "let" => return self.builtin_let_expression(env.clone(), args),
+            "let" => return self.builtin_let_expression(env, args),
             _ => {},
           }
         }
@@ -227,13 +227,13 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       let mut val_args : Vec<Value<S>> = Vec::with_capacity(args_count);
 
       for arg in args {
-         match self.exec_evaluation(&gle, rte.clone(), &arg) {
+         match self.exec_evaluation(&gle, rte.clone(), arg) {
            Ok(arg) => { val_args.push(arg) }
            err => { return Done(err) }
          }
        }
 
-       match self.exec_evaluation(&gle, rte.clone(), op) {
+       match self.exec_evaluation(&gle, rte, op) {
          Ok(Value::Function(Function::NativeFn(native_func))) => {
           match native_func(gle.clone(), val_args) {
             Ok(val) => { return Done(Ok(val)) }
@@ -269,7 +269,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       let mut val_args : Vec<Value<S>> = Vec::with_capacity(args_count);
 
       for arg in args {
-         match self.exec_evaluation(&gle, rte.clone(), &arg) {
+         match self.exec_evaluation(&gle, rte.clone(), arg) {
            Ok(arg) => { val_args.push(arg) }
            err => { return Done(err) }
          }
