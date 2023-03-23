@@ -105,7 +105,7 @@ impl<S: Symbol> RTE<S> {
 
   pub fn extend(parent: Rc<RefCell<RTE<S>>>, values: Vec<Value<S>>) -> Rc<RefCell<Self>>  {
     Rc::new(RefCell::new(Self {
-      parent: Some(parent.clone()),
+      parent: Some(parent),
       values: values,
     }))
   }

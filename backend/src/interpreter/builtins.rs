@@ -123,7 +123,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
 
     let test_compiled = self.compile_expression(env.clone(), test.clone())?;
     let true_compiled = self.compile_expression(env.clone(), true_branch.clone())?;
-    let false_compiled = self.compile_expression(env.clone(), false_branch.clone())?;
+    let false_compiled = self.compile_expression(env, false_branch.clone())?;
 
     Ok(make_op_if(test_compiled, true_compiled, false_compiled))
 
@@ -143,7 +143,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       param_names.push(param_name.as_symbol());
     }
 
-    let mut env = Env::extend(env.clone());
+    let mut env = Env::extend(env);
 
     /*
      for (name, arg) in std::iter::zip(lambda.params, args) {
@@ -154,7 +154,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     let limit = param_names.len() as i64;
     while index < limit {
       let name = &param_names[index as usize];
-      env.define(name.clone(), Value::Integer(index));
+      env.define(*name, Value::Integer(index));
       index = index + 1;
     }
     let lambda = Function::Lambda(Lambda {
@@ -193,12 +193,12 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       args.push(val);
     }
 
-    let mut inner_env = Env::extend(env.clone());
+    let mut inner_env = Env::extend(env);
     let mut index : i64 = 0;
     let limit = params.len() as i64;
     while index < limit {
       let name = &params[index as usize];
-      inner_env.define(name.clone(), Value::Integer(index));
+      inner_env.define(*name, Value::Integer(index));
       index = index + 1;
     }
     let code = self.compile_expression(Rc::new(RefCell::new(inner_env)), body.clone())?;

@@ -225,6 +225,6 @@ pub fn ne<S: Symbol>(
   env: Rc<RefCell<Env<S>>>,
   args: Vec<Value<S>>,
 ) -> Result<Value<S>> {
-  let equal: bool = eq(env.clone(), args)?.try_into()?;
+  let equal: bool = eq(env, args)?.try_into()?;
   Ok(Value::Boolean(!equal))
 }
