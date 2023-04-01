@@ -111,6 +111,8 @@ pub enum Op<S: lispers_common::Symbol> {
   Enclose(Function<S>), // close over rte
   Apply(Rc<Op<S>>, Vec<Rc<Op<S>>>),
   PRINTLN(Vec<Rc<Op<S>>>), // FIXME: can't get that to work properly
+
+  AssignLex(usize, usize, Rc<Op<S>>),
 }
 
 pub type RtOp<S> = Rc<Op<S>>;

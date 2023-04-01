@@ -123,6 +123,18 @@ impl<S: Symbol> RTE<S> {
     }
   }
 
+  pub fn set(&mut self, depth: usize, index: usize, value: Value<S>) -> bool {
+    if depth==0 {
+      self.values[index]=value;
+      return true
+    }
+    else if let Some(parent) = &self.parent {
+      return parent.borrow_mut().set(depth-1, index, value)
+    } else {
+      return false
+    }
+  }
+
   pub fn gimmithevaluespleaseatallcost(&mut self) -> Vec<Value<S>> {
     let mut result: Vec<Value<S>> = Vec::with_capacity(self.values.len());
     for val in &self.values { result.push(val.clone()) }

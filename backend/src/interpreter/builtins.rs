@@ -5,7 +5,7 @@ use crate::prelude::*;
 use crate::data::{Value, Sym, List, Function, Lambda};
 use crate::env::{Env};
 use super::Interpreter;
-use super::{make_op_apply, make_op_if, make_op_enclose, make_op_println};
+use super::{make_op_apply, make_op_if, make_op_enclose, make_op_println, make_op_assign_lex};
 
 use crate::utils::{assert_exactly_args, assert_at_least_args};
 
@@ -93,23 +93,28 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     &mut self,
     env: Rc<RefCell<Env<S>>>,
     args: Vec<Value<S>>,
-  ) -> Result<Value<S>> {
+  ) -> Result<RtOp<S>> {
     assert_exactly_args(2, args.len())?;
     let var = &args[0];
     let val = &args[1];
 
     let sym: Sym<S> = var.try_into()?;
     let sym = sym.as_symbol();
+    let (depth, index) = env.borrow().lookup(sym);
+    let val = self.compile_expression(env.clone(), val.clone())?;
 
-    let val = self.eval_expression(env.clone(), val.clone())?;
-    env.borrow_mut().set(sym, val.clone())
-      .map_err(|sym| RuntimeError::UndefinedSymbol {
-        detail: self.interner.resolve(sym).unwrap_or("<>").to_string(),
-      })?;
-
-    Ok(val)
+    if depth==-1 {
+      if index == -1 {
+        Err(RuntimeError::UndefinedSymbol {
+            detail: self.interner.resolve(sym).unwrap_or("<>").to_string()
+        })
+      } else {
+        // Ok(make_op_global_ref(sym))
+        Err(RuntimeError::NYIE{detail: "set! for global variables not yet implemented".to_string()})      }
+    } else {
+      Ok(make_op_assign_lex(depth as usize, index as usize, val))
+    }
   }
-
   pub fn builtin_controlflow_if(
     &mut self,
     env: Rc<RefCell<Env<S>>>,

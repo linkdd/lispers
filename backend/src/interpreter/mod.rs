@@ -30,6 +30,7 @@ pub fn make_op_enclose<S: Symbol>(func: Function<S>) -> RtOp<S> { return Rc::new
 pub fn make_op_apply<S: Symbol>(func: RtOp<S>, args: Vec<RtOp<S>>) -> RtOp<S> { return Rc::new(Op::Apply(func, args)) }
 pub fn make_op_println<S: Symbol>(args: Vec<RtOp<S>>) -> RtOp<S> { return Rc::new(Op::PRINTLN(args)) }
 
+pub fn make_op_assign_lex<S: Symbol>(depth: usize, index: usize, value: RtOp<S>)  -> RtOp<S> { return Rc::new(Op::AssignLex(depth, index, value)) }
 
 mod builtins;
 
@@ -151,7 +152,7 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
             "println" => return self.builtin_println(env, args),
             "quote" => return Ok(make_op_finish(self.builtin_quote(args)?)),
             "def" => return Ok(make_op_finish(self.builtin_define(env, args)?)),
-            "set!" => return Ok(make_op_finish(self.builtin_set(env, args)?)),
+            "set!" => return self.builtin_set(env, args),
             "if" => return self.builtin_controlflow_if(env, args),
             "lambda" => return self.builtin_lambda(env, args),
             "let" => return self.builtin_let_expression(env, args),
@@ -283,6 +284,16 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
 
       println!("{}", output);
       Done(Ok(Value::default()))
+    }
+    Op::AssignLex(depth, index, value) => {
+      // println!("AssignLex {:} depth {:} index {:}", rte.borrow().format(), depth, index);
+      match self.exec_evaluation(&gle, rte.clone(), value) {
+        Ok(value) => {
+          rte.borrow_mut().set(*depth, *index, value.clone());
+          return Done(Ok(value))
+        }
+        err => { return Done(err) }
+      }
     }
     // _ => {return Done(Err(RuntimeError::NYIE{detail: "ret42 Opcode".to_string()}))}
     }
