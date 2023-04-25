@@ -3,13 +3,46 @@ use lispers_common::{Backend, Symbol};
 
 use crate::prelude::*;
 use crate::data::{Value, Sym, List, Function, Lambda};
-use crate::env::Env;
+use crate::env::{Env};
 use super::Interpreter;
+use super::{make_op_apply, make_op_if, make_op_enclose, make_op_println, make_op_assign_lex};
 
 use crate::utils::{assert_exactly_args, assert_at_least_args};
 
 impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
-  pub fn builtin_println(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<Value<S>> {
+/* // PRINTLN(Vec<Op<S>>), // FIXME: can't get that to work properly
+  pub fn builtin_println_rt2(&self, env: Rc<RefCell<RTE<S>>>, args: Vec<Value<S>>) -> Result<Value<S>>
+  {
+    let output = args
+      .iter()
+      .map(|val| self.format_value(val))
+      .collect::<Vec<String>>()
+      .join(" ");
+
+    println!("{}", output);
+    Ok(Value::default())
+  }
+// */
+  pub fn builtin_println(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<RtOp<S>> {
+    assert_at_least_args(1, args.len())?;
+
+    let mut values = Vec::with_capacity(args.len());
+
+    for arg in args {
+      let val = self.compile_expression(env.clone(), arg)?;
+      values.push(val);
+    }
+/*  // FIXME: can't get that to work properly
+    let func = Function::NativeFn(None, |rte, args| { println!(""); Ok(Value::Boolean(false)) //self.buildin_println_rt1(rte, args)
+    });
+    let func = Op::Enclose(func);
+    // Ok(Op::Apply(Box::new(func), values))
+    // Op::PRINTLN(Vec<Op<S>>), // FIXME: can't get that to work properly
+// */
+    Ok(make_op_println(values)) // FIXME: can't get that to work properly
+  }
+
+  pub fn builtin_println_ct(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<Value<S>> {
     assert_at_least_args(1, args.len())?;
 
     let mut values = Vec::with_capacity(args.len());
@@ -47,57 +80,61 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
     let sym: Sym<S> = var.try_into()?;
     let sym = sym.as_symbol();
 
+    env.borrow_mut().define(sym, var.clone());
+
     let val = self.eval_expression(env.clone(), val.clone())?;
-    env.borrow_mut().define(sym, val.clone());
-    Ok(val)
+    match env.borrow_mut().set(sym, val.clone()) {
+      Ok(_) => { Ok(val) }
+      _other => { Ok(val) } // FIXME should signal error
+    }
   }
 
   pub fn builtin_set(
     &mut self,
     env: Rc<RefCell<Env<S>>>,
     args: Vec<Value<S>>,
-  ) -> Result<Value<S>> {
+  ) -> Result<RtOp<S>> {
     assert_exactly_args(2, args.len())?;
     let var = &args[0];
     let val = &args[1];
 
     let sym: Sym<S> = var.try_into()?;
     let sym = sym.as_symbol();
+    let (depth, index) = env.borrow().lookup(sym);
+    let val = self.compile_expression(env.clone(), val.clone())?;
 
-    let val = self.eval_expression(env.clone(), val.clone())?;
-    env.borrow_mut().set(sym, val.clone())
-      .map_err(|sym| RuntimeError::UndefinedSymbol {
-        detail: self.interner.resolve(sym).unwrap_or("<>").to_string(),
-      })?;
-
-    Ok(val)
+    if depth==-1 {
+      if index == -1 {
+        Err(RuntimeError::UndefinedSymbol {
+            detail: self.interner.resolve(sym).unwrap_or("<>").to_string()
+        })
+      } else {
+        // Ok(make_op_global_ref(sym))
+        Err(RuntimeError::NYIE{detail: "set! for global variables not yet implemented".to_string()})      }
+    } else {
+      Ok(make_op_assign_lex(depth as usize, index as usize, val))
+    }
   }
-
   pub fn builtin_controlflow_if(
     &mut self,
     env: Rc<RefCell<Env<S>>>,
     args: Vec<Value<S>>,
-  ) -> Result<Value<S>> {
+  ) -> Result<RtOp<S>> {
     assert_exactly_args(3, args.len())?;
 
     let test = &args[0];
     let true_branch = &args[1];
     let false_branch = &args[2];
 
-    let test_result = self.eval_expression(env.clone(), test.clone())?;
-    let test_result: bool = test_result.try_into()?;
+    let test_compiled = self.compile_expression(env.clone(), test.clone())?;
+    let true_compiled = self.compile_expression(env.clone(), true_branch.clone())?;
+    let false_compiled = self.compile_expression(env, false_branch.clone())?;
 
-    let branch = if test_result {
-      true_branch
-    }
-    else {
-      false_branch
-    };
+    Ok(make_op_if(test_compiled, true_compiled, false_compiled))
 
-    self.eval_expression(env.clone(), branch.clone())
   }
 
-  pub fn builtin_lambda(&mut self, args: Vec<Value<S>>) -> Result<Value<S>> {
+  pub fn builtin_lambda(&mut self, env: Rc<RefCell<Env<S>>>, args: Vec<Value<S>>) -> Result<RtOp<S>> {
     assert_exactly_args(2, args.len())?;
 
     let params = &args[0];
@@ -111,19 +148,33 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       param_names.push(param_name.as_symbol());
     }
 
-    let lambda = Value::Function(Function::Lambda(Lambda {
-      params: param_names,
-      body: Box::new(body.clone()),
-    }));
+    let mut env = Env::extend(env);
 
-    Ok(lambda)
+    /*
+     for (name, arg) in std::iter::zip(lambda.params, args) {
+        env.define(name, self.exec_evaluation(arg)?);
+      }
+    */
+    let mut index : i64 = 0;
+    let limit = param_names.len() as i64;
+    while index < limit {
+      let name = &param_names[index as usize];
+      env.define(*name, Value::Integer(index));
+      index = index + 1;
+    }
+    let lambda = Function::Lambda(Lambda {
+      params: param_names,
+      code: self.compile_expression(Rc::new(RefCell::new(env)), body.clone())?,
+    });
+
+    Ok(make_op_enclose(lambda))
   }
 
   pub fn builtin_let_expression(
     &mut self,
     env: Rc<RefCell<Env<S>>>,
     args: Vec<Value<S>>,
-  ) -> Result<Value<S>> {
+  ) -> Result<RtOp<S>> {
     assert_exactly_args(2, args.len())?;
     let decls = &args[0];
     let body = &args[1];
@@ -141,17 +192,27 @@ impl<S: Symbol, B: Backend<S>> Interpreter<S, B> {
       let val = &decl[1];
 
       let sym: Sym<S> = sym.try_into()?;
-      let val = self.eval_expression(env.clone(), val.clone())?;
+      let val = self.compile_expression(env.clone(), val.clone())?;
 
       params.push(sym.as_symbol());
       args.push(val);
     }
 
+    let mut inner_env = Env::extend(env);
+    let mut index : i64 = 0;
+    let limit = params.len() as i64;
+    while index < limit {
+      let name = &params[index as usize];
+      inner_env.define(*name, Value::Integer(index));
+      index = index + 1;
+    }
+    let code = self.compile_expression(Rc::new(RefCell::new(inner_env)), body.clone())?;
+
     let lambda = Function::Lambda(Lambda {
       params,
-      body: Box::new(body.clone()),
+      code: code,
     });
 
-    self.eval_function(env.clone(), lambda, args)
+    Ok(make_op_apply(make_op_enclose(lambda), args))
   }
 }

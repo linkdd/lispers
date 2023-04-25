@@ -11,6 +11,7 @@ pub enum RuntimeError {
   TooFewArguments { expected: usize, got: usize },
   TooManyArguments { expected: usize, got: usize },
   TypeError { expected: String, got: String },
+  NYIE{ detail: String}
 }
 
 impl std::fmt::Display for RuntimeError {
@@ -47,6 +48,9 @@ impl std::fmt::Display for RuntimeError {
       Self::TypeError { expected, got } => {
         write!(f, "TypeError: expected <{}> but got <{}>", expected, got)
       }
+      Self::NYIE { detail }=> {
+        write!(f, "NYIE: {}", detail)
+      }
     }
   }
 }
@@ -68,3 +72,47 @@ impl From<SyntaxError> for RuntimeError {
     Self::SyntaxError(err)
   }
 }
+
+pub enum Promise<E, R> {
+  Delay(E),
+  Done(R)
+}
+
+#[inline(always)]
+pub fn force_promise<StepFn, E, R>(mut step: StepFn, mut expr: E) -> R
+where
+    StepFn: FnMut(E) -> Promise<E, R> // TBD: try FnMut here?
+{
+  loop {
+    match step(expr) {
+      Promise::Delay(tail) => {
+        expr = tail;
+        continue;
+      }
+      Promise::Done(result) => {
+        break result;
+      }
+    }
+  }
+}
+
+pub use Promise::*;
+
+use super::data::{Value, Function};
+
+use std::{rc::Rc};
+
+#[derive(Clone)]
+pub enum Op<S: lispers_common::Symbol> {
+  FetchGle(S), // read global variable
+  RefRTE(usize, usize),
+  If(Rc<Op<S>>, Rc<Op<S>>, Rc<Op<S>>),
+  Finish(Value<S>),
+  Enclose(Function<S>), // close over rte
+  Apply(Rc<Op<S>>, Vec<Rc<Op<S>>>),
+  PRINTLN(Vec<Rc<Op<S>>>), // FIXME: can't get that to work properly
+
+  AssignLex(usize, usize, Rc<Op<S>>),
+}
+
+pub type RtOp<S> = Rc<Op<S>>;
